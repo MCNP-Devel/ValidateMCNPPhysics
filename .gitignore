@@ -1,0 +1,9 @@
+CMakeCache.txt
+CMakeFiles/
+Config.conf
+DynMemCheck.txt
+Makefile
+ValidateMCNPPhysics.cbp
+cmake_install.cmake
+obj/
+tempFileData.txt

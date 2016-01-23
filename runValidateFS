@@ -1,0 +1,27 @@
+#!/bin/bash
+
+rm -rf CMakeCache.txt CMakeFiles
+
+export AllowForHeavyElements=1
+if [ "$1" = "gdb" ]; then
+	source /home/$USER/NuclearSim/Debug/geant4.10.00.p02-install/bin/geant4.sh
+	cmake -DTOPC_USE=1 -DTOPC_USE_SEQ=1 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=-std=c++11 -DGeant4_DIR=/home/$USER/NuclearSim/Debug/geant4.10.00.p02-install/lib64/Geant4-10.00.p02/Geant4Config.cmake ./
+	make clean
+	make -j4
+	gdb valFSData
+
+elif [ "$1" = "valgrind" ]; then
+	source /home/$USER/NuclearSim/Debug/geant4.10.00.p02-install/bin/geant4.sh
+	cmake -DG4VISUALIZE_USE=0 -DTOPC_USE=1 -DTOPC_USE_SEQ=1 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=-std=c++11 -DGeant4_DIR=/home/$USER/NuclearSim/Debug/geant4.10.00.p02-install/lib64/Geant4-10.00.p02/Geant4Config.cmake ./
+	make clean
+	make -j4
+	valgrind --leak-check=full --show-reachable=yes --error-limit=no --track-origins=yes --log-file=valFSData.log ./valFSData $2 $3 $4
+
+else
+	source /home/$USER/NuclearSim/Debug/geant4.10.00.p02-install/bin/geant4.sh
+	cmake -DTOPC_USE=1 -DTOPC_USE_SEQ=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-std=c++11 -DGeant4_DIR=/home/$USER/NuclearSim/geant4.10.00.p02-install/lib64/Geant4-10.00.p02/Geant4Config.cmake ./
+	make clean
+	make -j4
+	./valFSData $1 $2 $3
+
+fi

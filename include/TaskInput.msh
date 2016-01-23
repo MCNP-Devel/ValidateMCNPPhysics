@@ -1,0 +1,62 @@
+%{
+#include "TaskInput.hh"
+
+%}
+
+// This file is generated automatically from TaskInput.hh .  It is an
+//   intermediate file useful for debugging, but otherwise may be deleted.
+
+ marshaling class MarshaledTaskInput (TaskInput* param) {
+
+        int g4ndlIndex;
+    //FIELDMARSHAL:
+    {
+	memcpy($$, &Shadowed_param->g4ndlIndex, sizeof(int));
+    }
+    //FIELDUNMARSHAL:
+    {
+	memcpy(&Shadowed_param->g4ndlIndex, $$, sizeof(int));
+
+    }
+    //FIELDSIZE:
+    {
+	$SIZE = sizeof(int);
+
+    }
+
+        int mcnpIndex;
+    //FIELDMARSHAL:
+    {
+	memcpy($$, &Shadowed_param->mcnpIndex, sizeof(int));
+    }
+    //FIELDUNMARSHAL:
+    {
+	memcpy(&Shadowed_param->mcnpIndex, $$, sizeof(int));
+
+    }
+    //FIELDSIZE:
+    {
+	$SIZE = sizeof(int);
+
+    }
+
+        bool sampling;
+    //FIELDMARSHAL:
+    {
+	memcpy($$, &Shadowed_param->sampling, sizeof(bool));
+    }
+    //FIELDUNMARSHAL:
+    {
+	memcpy(&Shadowed_param->sampling, $$, sizeof(bool));
+
+    }
+    //FIELDSIZE:
+    {
+	$SIZE = sizeof(bool);
+
+    }
+	unmarshaling constructor {
+	$THIS = new TaskInput();
+	}
+}
+

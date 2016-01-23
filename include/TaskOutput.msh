@@ -1,0 +1,30 @@
+%{
+#include "TaskOutput.hh"
+
+%}
+
+// This file is generated automatically from TaskOutput.hh .  It is an
+//   intermediate file useful for debugging, but otherwise may be deleted.
+
+ marshaling class MarshaledTaskOutput (TaskOutput* param) {
+
+        double totalDiff;
+    //FIELDMARSHAL:
+    {
+	memcpy($$, &Shadowed_param->totalDiff, sizeof(double));
+    }
+    //FIELDUNMARSHAL:
+    {
+	memcpy(&Shadowed_param->totalDiff, $$, sizeof(double));
+
+    }
+    //FIELDSIZE:
+    {
+	$SIZE = sizeof(double);
+
+    }
+	unmarshaling constructor {
+	$THIS = new TaskOutput();
+	}
+}
+
