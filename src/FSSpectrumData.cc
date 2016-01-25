@@ -68,124 +68,124 @@ void FSSpectrumData::AddPhoton(G4DynamicParticle &pSec)
     pSecKEn.push_back(std::log10(pSec.GetKineticEnergy()));
 }
 
-double FSSpectrumData::CompareFSData(std::string &outFileName, FSSpectrumData &mcnpData, bool *relevantData)
+double FSSpectrumData::CompareFSData(std::string &outFileName, double **mcnpIsoData, bool *relevantData)
 {
     std::stringstream stream;
     double totalDiff=0.;
 
-    if(relevantData[2])
+    if(relevantData[0])
     {
         stream << "Comparing the secondary neutron deflection angle" << std::endl;
-        totalDiff+=CompareHist(stream, nSecMomAngle, mcnpData.GetNSecMomAngle());
+        totalDiff+=CompareHist(stream, nSecMomAngle, mcnpIsoData[0]);
+    }
+
+    if(relevantData[1])
+    {
+        stream << "Comparing the delayed neutron deflection angle" << std::endl;
+        totalDiff+=CompareHist(stream, nDelMomAngle, mcnpIsoData[1]);
+    }
+
+    if(relevantData[2])
+    {
+        stream << "Comparing the secondary photon deflection angle" << std::endl;
+        totalDiff+=CompareHist(stream, pSecMomAngle, mcnpIsoData[2]);
+    }
+
+    if(relevantData[3])
+    {
+        stream << "Comparing the secondary neutron kinetic energy" << std::endl;
+        totalDiff+=CompareHist(stream, nSecKEn, mcnpIsoData[3]);
     }
 
     if(relevantData[4])
     {
-        stream << "Comparing the delayed neutron deflection angle" << std::endl;
-        totalDiff+=CompareHist(stream, nDelMomAngle, mcnpData.GetNDelMomAngle());
+        stream << "Comparing the delayed neutron kinetic energy" << std::endl;
+        totalDiff+=CompareHist(stream, nDelKEn, mcnpIsoData[4]);
+    }
+
+    if(relevantData[5])
+    {
+        stream << "Comparing the secondary photon kinetic energy" << std::endl;
+        totalDiff+=CompareHist(stream, pSecKEn, mcnpIsoData[5]);
     }
 
     if(relevantData[6])
     {
-        stream << "Comparing the secondary photon deflection angle" << std::endl;
-        totalDiff+=CompareHist(stream, pSecMomAngle, mcnpData.GetPSecMomAngle());
-    }
-
-    if(relevantData[9])
-    {
-        stream << "Comparing the secondary neutron kinetic energy" << std::endl;
-        totalDiff+=CompareHist(stream, nSecKEn, mcnpData.GetNSecKEn());
-    }
-
-    if(relevantData[10])
-    {
-        stream << "Comparing the delayed neutron kinetic energy" << std::endl;
-        totalDiff+=CompareHist(stream, nDelKEn, mcnpData.GetNDelKEn());
-    }
-
-    if(relevantData[11])
-    {
-        stream << "Comparing the secondary photon kinetic energy" << std::endl;
-        totalDiff+=CompareHist(stream, pSecKEn, mcnpData.GetPSecKEn());
-    }
-
-    if(relevantData[12])
-    {
         stream << "Comparing the secondary neutron yield" << std::endl;
-        totalDiff+=CompareHist(stream, nSecYield, mcnpData.GetNSecYield());
+        totalDiff+=CompareHist(stream, nSecYield, mcnpIsoData[6]);
     }
 
-    if(relevantData[13])
+    if(relevantData[7])
     {
         stream << "Comparing the delayed neutron yield" << std::endl;
-        totalDiff+=CompareHist(stream, nDelYield, mcnpData.GetNDelYield());
+        totalDiff+=CompareHist(stream, nDelYield, mcnpIsoData[7]);
     }
 
-    if(relevantData[14])
+    if(relevantData[8])
     {
         stream << "Comparing the secondary photon yield" << std::endl;
-        totalDiff+=CompareHist(stream, pSecYield, mcnpData.GetPSecYield());
+        totalDiff+=CompareHist(stream, pSecYield, mcnpIsoData[8]);
     }
 
     SetDataStream( outFileName, stream, false );
     return totalDiff;
 }
 
-double FSSpectrumData::CompareFSData(std::string &outFileName, FSSpectrumData &mcnpData, int dataTypeIndex, double *binBounds, int binVecSize)
+double FSSpectrumData::CompareFSData(std::string &outFileName, double **mcnpIsoData, int dataTypeIndex, double *binBounds, int binVecSize)
 {
     std::stringstream stream;
     double totalDiff=0.;
 
+    if(dataTypeIndex==0)
+    {
+        totalDiff+=CompareHist(stream, nSecMomAngle, mcnpIsoData[0], binBounds, binVecSize);
+    }
+
+    else if(dataTypeIndex==1)
+    {
+        totalDiff+=CompareHist(stream, nDelMomAngle, mcnpIsoData[1], binBounds, binVecSize);
+    }
+
     else if(dataTypeIndex==2)
     {
-        totalDiff+=CompareHist(stream, nSecMomAngle, mcnpData.GetNSecMomAngle(), binBounds, binVecSize);
+        totalDiff+=CompareHist(stream, pSecMomAngle, mcnpIsoData[2], binBounds, binVecSize);
+    }
+
+    else if(dataTypeIndex==3)
+    {
+        totalDiff+=CompareHist(stream, nSecKEn, mcnpIsoData[3], binBounds, binVecSize);
     }
 
     else if(dataTypeIndex==4)
     {
-        totalDiff+=CompareHist(stream, nDelMomAngle, mcnpData.GetNDelMomAngle(), binBounds, binVecSize);
+        totalDiff+=CompareHist(stream, nDelKEn, mcnpIsoData[4], binBounds, binVecSize);
+    }
+
+    else if(dataTypeIndex==5)
+    {
+        totalDiff+=CompareHist(stream, pSecKEn, mcnpIsoData[5], binBounds, binVecSize);
     }
 
     else if(dataTypeIndex==6)
     {
-        totalDiff+=CompareHist(stream, pSecMomAnglei, mcnpData.GetPSecMomAnglei(), binBounds, binVecSize);
+        totalDiff+=CompareHist(stream, nSecYield, mcnpIsoData[6], binBounds, binVecSize);
     }
 
-    else if(dataTypeIndex==9)
+    else if(dataTypeIndex==7)
     {
-        totalDiff+=CompareHist(stream, nSecKEn, mcnpData.GetNSecKEn(), binBounds, binVecSize);
+        totalDiff+=CompareHist(stream, nDelYield, mcnpIsoData[7], binBounds, binVecSize);
     }
 
-    else if(dataTypeIndex==10)
+    else if(dataTypeIndex==8)
     {
-        totalDiff+=CompareHist(stream, nDelKEn, mcnpData.GetNDelKEn(), binBounds, binVecSize);
-    }
-
-    else if(dataTypeIndex==11)
-    {
-        totalDiff+=CompareHist(stream, pSecKEn, mcnpData.GetPSecKEn(), binBounds, binVecSize);
-    }
-
-    else if(dataTypeIndex==12)
-    {
-        totalDiff+=CompareHist(stream, nSecYield, mcnpData.GetNSecYield(), binBounds, binVecSize);
-    }
-
-    else if(dataTypeIndex==13)
-    {
-        totalDiff+=CompareHist(stream, nDelYield, mcnpData.GetNDelYield(), binBounds, binVecSize);
-    }
-
-    else if(dataTypeIndex==14)
-    {
-        totalDiff+=CompareHist(stream, pSecYield, mcnpData.GetPSecYield(), binBounds, binVecSize);
+        totalDiff+=CompareHist(stream, pSecYield, mcnpIsoData[8], binBounds, binVecSize);
     }
 
     SetDataStream( outFileName, stream, false );
     return totalDiff;
 }
 
-double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double> &g4ndlData, std::vector<double> &mcnpData, double *binLimits, int binVecSize)
+double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double> &g4ndlData, double *mcnpIsoData, double *binLimits, int binVecSize)
 {
     double binBounds[numBins+1];
     double *binDim;
@@ -199,8 +199,6 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
     {
         if(g4ndlData.size()>0)
             minNum=maxNum=g4ndlData[0];
-        else if(mcnpData.size()>0)
-            minNum=maxNum=mcnpData[0];
         else
         {
             return 0.;
@@ -220,18 +218,6 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
             }
         }
 
-        for(int i=0; i<int(mcnpData.size()); i++)
-        {
-            if(maxNum<mcnpData[i])
-            {
-                maxNum=mcnpData[i];
-            }
-            if(minNum>mcnpData[i])
-            {
-                minNum=mcnpData[i];
-            }
-        }
-
         for(int i=0; i<numBins+1; i++)
         {
             binBounds[i]=(maxNum-minNum)*i/numBins+minNum;
@@ -244,7 +230,7 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
         binDim=binLimits;
         numBinBound=binVecSize;
 
-        if((g4ndlData.size()==0)&&(mcnpData.size()==0))
+        if(g4ndlData.size()==0)
         {
             for(int i=0; i<3; i++)
             {
@@ -301,26 +287,6 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
         }
     }
 
-    for(int i=0; i<int(mcnpData.size()); i++)
-    {
-        for(int j=1; j<numBinBound-1; j++)
-        {
-            if(mcnpData[i]<=binDim[j])
-            {
-                mcnpHist[j-1]++;
-                break;
-            }
-        }
-    }
-
-    if(mcnpData.size()>0)
-    {
-        for(int j=0; j<numBinBound-1; j++)
-        {
-            mcnpHist[j]/=mcnpData.size();
-        }
-    }
-
     if(binVecSize==-1)
     {
         for(int j=0; j<numBinBound; j++)
@@ -342,7 +308,7 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
     stream << "MCNP Hist" << std::endl;
     for(int j=0; j<numBinBound-1; j++)
     {
-        stream << std::setw(14) << std::right << mcnpHist[j];
+        stream << std::setw(14) << std::right << mcnpIsoData[j];
         if(((j+1)%6==0)||(j==numBinBound-2))
             stream << '\n';
     }
@@ -350,7 +316,7 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
     stream << "Diff Sq Hist" << std::endl;
     for(int j=0; j<numBinBound-1; j++)
     {
-        diffHist[j] = std::pow(mcnpHist[j]-g4ndlHist[j],2);
+        diffHist[j] = std::pow(mcnpIsoData[j]-g4ndlHist[j],2);
         sumDiff+=diffHist[j];
         stream << std::setw(14) << std::right << diffHist[j];
         if(((j+1)%6==0)||(j==numBinBound-2))
@@ -359,8 +325,6 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
 
     if(g4ndlHist)
         delete [] g4ndlHist;
-    if(mcnpHist)
-        delete [] mcnpHist;
     if(diffHist)
         delete [] diffHist;
 
@@ -370,91 +334,56 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
 
 void FSSpectrumData::GetBinLimits(double &minVal, double &maxVal, int dataTypeIndex, bool &hasData)
 {
+
     if(dataTypeIndex==0)
     {
-        minVal=GetMin(nPrimMomDirPhi, hasData);
-        maxVal=GetMax(nPrimMomDirPhi);
+        minVal=GetMin(nSecMomAngle, hasData);
+        maxVal=GetMax(nSecMomAngle);
     }
 
     else if(dataTypeIndex==1)
     {
-        minVal=GetMin(nPrimMomDirTheta, hasData);
-        maxVal=GetMax(nPrimMomDirTheta);
+        minVal=GetMin(nDelMomAngle, hasData);
+        maxVal=GetMax(nDelMomAngle);
     }
 
     else if(dataTypeIndex==2)
     {
-        minVal=GetMin(nSecMomDirPhi, hasData);
-        maxVal=GetMax(nSecMomDirPhi);
+        minVal=GetMin(pSecMomAngle, hasData);
+        maxVal=GetMax(pSecMomAngle);
     }
 
     else if(dataTypeIndex==3)
-    {
-        minVal=GetMin(nSecMomDirTheta, hasData);
-        maxVal=GetMax(nSecMomDirTheta);
-    }
-
-    else if(dataTypeIndex==4)
-    {
-        minVal=GetMin(nDelMomDirPhi, hasData);
-        maxVal=GetMax(nDelMomDirPhi);
-    }
-
-    else if(dataTypeIndex==5)
-    {
-        minVal=GetMin(nDelMomDirTheta, hasData);
-        maxVal=GetMax(nDelMomDirTheta);
-    }
-
-    else if(dataTypeIndex==6)
-    {
-        minVal=GetMin(pSecMomDirPhi, hasData);
-        maxVal=GetMax(pSecMomDirPhi);
-    }
-
-    else if(dataTypeIndex==7)
-    {
-        minVal=GetMin(pSecMomDirTheta, hasData);
-        maxVal=GetMax(pSecMomDirTheta);
-    }
-
-    else if(dataTypeIndex==8)
-    {
-        minVal=GetMin(nPrimKEn, hasData);
-        maxVal=GetMax(nPrimKEn);
-    }
-
-    else if(dataTypeIndex==9)
     {
         minVal=GetMin(nSecKEn, hasData);
         maxVal=GetMax(nSecKEn);
     }
 
-    else if(dataTypeIndex==10)
+    else if(dataTypeIndex==4)
     {
         minVal=GetMin(nDelKEn, hasData);
         maxVal=GetMax(nDelKEn);
     }
 
-    else if(dataTypeIndex==11)
+    else if(dataTypeIndex==5)
     {
         minVal=GetMin(pSecKEn, hasData);
         maxVal=GetMax(pSecKEn);
     }
 
-    else if(dataTypeIndex==12)
+    else if(dataTypeIndex==6)
     {
         minVal=GetMin(nSecYield, hasData);
         maxVal=GetMax(nSecYield);
     }
 
-    else if(dataTypeIndex==13)
+    else if(dataTypeIndex==7)
     {
         minVal=GetMin(nDelYield, hasData);
         maxVal=GetMax(nDelYield);
     }
 
-    else if(dataTypeIndex==14)
+    else if(dataTypeIndex==8)
     {
         minVal=GetMin(pSecYield, hasData);
         maxVal=GetMax(pSecYield);

@@ -47,8 +47,8 @@ class FSSpectrumData
             pSecYield.push_back(yield);
         }
         double CompareFSData(std::string &outFileName, FSSpectrumData &mcnpData, bool *relevantData);
-        double CompareFSData(std::string &outFileName, FSSpectrumData &mcnpData, int dataTypeIndex, double *binBounds, int binVecSize);
-        double CompareHist(std::stringstream &stream, std::vector<double> &g4ndlData, std::vector<double> &mcnpData, double *binLimits=NULL, int binVecSize=-1);
+        double CompareFSData(std::string &outFileName, double **mcnpIsoData, int dataTypeIndex, double *binBounds, int binVecSize);
+        double CompareHist(std::stringstream &stream, std::vector<double> &g4ndlData, double *mcnpIsoData, double *binLimits=NULL, int binVecSize=-1);
         void GetBinLimits(double &minVal, double &maxVal, int dataTypeIndex, bool &hasData);
         double GetMin(std::vector<double> &valVec, bool &hasData);
         double GetMax(std::vector<double> &valVec);

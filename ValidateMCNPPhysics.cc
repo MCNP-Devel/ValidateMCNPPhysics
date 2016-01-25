@@ -72,7 +72,7 @@
 #include "include/VFDIonTable.hh"
 
 #define SetNumEnerFlag 1
-#define numIncEner 253
+#define numIncEner 261
 #define numPointPerOrder 20
 #define numDataTypes 9
 #define numFS 36
@@ -110,7 +110,7 @@ bool DirectoryExists( const char* pzPath );
 void GetDataStream( string filename, std::stringstream& ss);
 void SetDataStream( string filename , std::stringstream& ss, bool overWrite );
 
-double *incEnerVec;
+double incEnerVec[numIncEner];
 int incEnerSize;
 //G4Track *nTrack;
 G4DynamicParticle *nParticle;
@@ -129,9 +129,9 @@ TaskInput *taskIn;
 
 int fsIndexGbl;
 string outDirGbl, inMCNPFSDirGbl;
-string *isoNameListG4NDLGbl, *isoNameListMCNPGbl;
-VFDNeutronHPFinalState **isoFSDataG4NDLGbl, **isoFSDataMCNPGbl;
-std::pair<double,double> *enerBoundG4NDLGbl, *enerBoundMCNPGbl;
+string *isoNameListG4NDLGbl;
+VFDNeutronHPFinalState **isoFSDataG4NDLGbl;
+std::pair<double,double> *enerBoundG4NDLGbl;
 bool *relevantDataGbl[numFS];
 double *sumErrorVecGbl;
 double binBounds[3][numBins];
@@ -153,6 +153,8 @@ TOPC_BUF CalcDiff(void *input)
     MarshaledTaskInput inputTaskMarsh(input);
     TaskInput *inputTask = inputTaskMarsh.unmarshal();
     char line[256];
+	double dummy;
+	double mcnpIsoData[numIncEner][numDataTypes][numBins];
     bool relevantDataMCNP[numDataTypes];
 
     int j = inputTask->g4ndlIndex;
@@ -179,54 +181,39 @@ TOPC_BUF CalcDiff(void *input)
         stream >> relevantDataMCNP[i];
     }
 
+	for (int i = 0; i<numIncEner; i++)
+	{
+		stream >> dummy;
+	}
+
+	for (int i = 0; i<numDataTypes; i++)
+	{
+		stream.getline(line, 256);
+		stream.getline(line, 256);
+		stream.getline(line, 256);
+		for (int k = 0; k < numBins; k++)
+		{
+			stream >> dummy;
+		}
+
+		if (relevantDataMCNP[i] == 1)
+		{
+			for (int j = 0; j < numIncEner; j++)
+			{
+				for (int k = 0; k < numBins; k++)
+				{
+					stream >> dummy;
+					mcnpIsoData[j][i][k] = dummy;
+				}
+			}
+		}
+	}
+
     G4HadProjectile *projectile;
     int points=1;
     double totalDiff=0.;
     FSSpectrumData *fsDataG4NDL;
-    G4HadFinalState *resultG4NDLVec, *resultMCNPVec;
-
-    double emax, emin, enStep;
-    if(enerBoundG4NDLGbl[j].first<enerBoundMCNPGbl[k].first)
-    {
-        emin=enerBoundMCNPGbl[k].first;
-    }
-    else
-    {
-        emin=enerBoundG4NDLGbl[j].first;
-    }
-
-    if(enerBoundG4NDLGbl[j].second>enerBoundMCNPGbl[k].second)
-    {
-        emax=enerBoundMCNPGbl[k].second;
-    }
-    else
-    {
-        emax=enerBoundG4NDLGbl[j].second;
-    }
-
-    int numLoops=(std::ceil(std::log10(emax/emin)));
-    int numEnerPerOrder;
-    if(SetNumEnerFlag)
-    {
-        numEnerPerOrder = floor((numIncEner-1)/numLoops);
-        incEnerSize = numLoops*numEnerPerOrder+1;
-    }
-    else
-    {
-        incEnerSize = numPointPerOrder*numLoops+1;
-        numEnerPerOrder = numPointPerOrder;
-    }
-    incEnerVec = new double[incEnerSize];
-    incEnerVec[0]=emin;
-
-    for(int i=0; i<numLoops; i++)
-    {
-        (incEnerVec[i*numEnerPerOrder]*10<emax)? (enStep=9*incEnerVec[i*numEnerPerOrder]/numEnerPerOrder) : (enStep=(emax-incEnerVec[i*numEnerPerOrder])/numEnerPerOrder);
-        for(int step=0; step<numEnerPerOrder; step++)
-        {
-            incEnerVec[i*numEnerPerOrder+step+1] = incEnerVec[i*numEnerPerOrder+step] + enStep;
-        }
-    }
+    G4HadFinalState *resultG4NDLVec;
 
     fsDataG4NDL = new FSSpectrumData [incEnerSize];
 
@@ -267,7 +254,6 @@ TOPC_BUF CalcDiff(void *input)
                 stream << "No final state data to compare!" << std::endl;
                 SetDataStream( outFileName, stream, false);
                 delete projectile;
-                delete [] incEnerVec;
 
                 if(taskOut)
                     delete taskOut;
@@ -312,17 +298,14 @@ TOPC_BUF CalcDiff(void *input)
 
             for(int i=0; i<incEnerSize; i++)
             {
-                totalDiff+=fsDataG4NDL[i].CompareFSData(outFileName, , h, binBounds[boundType], numBins);
+                totalDiff+=fsDataG4NDL[i].CompareFSData(outFileName, mcnpIsoData[i], h, binBounds[boundType], numBins);
             }
         }
     }
 
-    delete [] incEnerVec;
     delete [] fsDataG4NDL;
     delete isoFSDataG4NDLGbl[j];
     isoFSDataG4NDLGbl[j]=NULL;
-    delete isoFSDataMCNPGbl[k];
-    isoFSDataMCNPGbl[k]=NULL;
 
     if(taskOut)
         delete taskOut;
@@ -419,7 +402,7 @@ int main (int argc, char** argv)
     //nTrack = new G4Track(apValueDynamicParticle, 0., G4ThreeVector(0.,0.,0.));
 
     int fsSizeG4NDL=0, fsSizeMCNP=0;
-    double tempDiff;
+    double tempDiff, binInc, incNEner, energyStep;
     vector<double> sumDiffVec;
     string G4NDLDir, compareCS="false", dirName, temp;
     ElementNames* elementNames;
@@ -455,6 +438,21 @@ int main (int argc, char** argv)
         relevantDataGbl[i] = relDataTemp[4];
     }
 
+	incNEner = 1.0E-05;
+	for (int i = 0; i < 13; i++)
+	{
+		if (10 * incNEner > 20.0)
+			energyStep = (20.0 - incNEner) / numPointPerOrder;
+		else
+			energyStep = (9 * incNEner) / numPointPerOrder;
+		for (int j = 0; j < numPointPerOrder; j++)
+		{
+			incEnerVec[(i - 1)*numPointPerOrder + j] = incNEner;
+			incNEner = incNEner + energyStep;
+		}
+	}
+
+	incEnerVec[numIncEner] = incNEner;
 
     binInc = 2*3.1415927/(numBins);
     binBounds[0][0] = -3.1415927+binInc;
@@ -742,7 +740,7 @@ void ExtractDir(G4String dirName, VFDNeutronHPFinalState ***isoFSData, string **
 }
 
 #if TOPC_USE
-double CompareData(string outDir, int fsSizeG4NDL, int fsSizeMCNP, bool sampling)
+double CompareData(string outDir, int fsSizeG4NDL, bool sampling)
 {
     double sumDiff=0.;
     TOPC_raw_begin_master_slave( CalcDiff, CheckProgress, NULL );
@@ -759,7 +757,7 @@ double CompareData(string outDir, int fsSizeG4NDL, int fsSizeMCNP, bool sampling
         {
             sumErrorVecGbl[i]=-1;
         }
-        string zG4NDL, zMCNP, aG4NDL, aMCNP;
+        string zG4NDL, aG4NDL;
         stream << "The FS files that have been compared in this directory, ordered from greatest to lowest discrepancy\n" << std::endl;
 
         if(!(DirectoryExists((outDir).c_str())))
@@ -781,79 +779,19 @@ double CompareData(string outDir, int fsSizeG4NDL, int fsSizeMCNP, bool sampling
         int nBar=0;
         for(int j=0; j<fsSizeG4NDL; j++)
         {
-//            if(isoNameListG4NDLGbl[j]!="28_61_Nickel")
-//                continue;
-            match=false;
-            ExtractZA(isoNameListG4NDLGbl[j], zG4NDL, aG4NDL);
-            if(j<fsSizeMCNP)
-            {
-                for(int k=j; k<fsSizeMCNP; k++)
-                {
-                    ExtractZA(isoNameListMCNPGbl[k], zMCNP, aMCNP);
-                    if((zG4NDL==zMCNP)&&(aG4NDL==aMCNP))
-                    {
-                        if(taskIn)
-                            delete taskIn;
+//           
+			if(taskIn)
+				delete taskIn;
 
-                        taskIn = new TaskInput(j, k, sampling);
+			taskIn = new TaskInput(j, k, sampling);
 
-                        if(taskInMarsh)
-                            delete taskInMarsh;
+			if (taskInMarsh)
+				delete taskInMarsh;
 
-                        taskInMarsh = new MarshaledTaskInput(taskIn);
+			taskInMarsh = new MarshaledTaskInput(taskIn);
 
-                        TOPC_raw_submit_task_input( TOPC_MSG(taskInMarsh->getBuffer(), taskInMarsh->getBufferSize()) );
-                        match=true;
-                        break;
-                    }
-                }
-                if(!match)
-                {
-                    for(int k=0; k<j; k++)
-                    {
-                        ExtractZA(isoNameListMCNPGbl[k], zMCNP, aMCNP);
-                        if((zG4NDL==zMCNP)&&(aG4NDL==aMCNP))
-                        {
-                            if(taskIn)
-                                delete taskIn;
+			TOPC_raw_submit_task_input(TOPC_MSG(taskInMarsh->getBuffer(), taskInMarsh->getBufferSize()));
 
-                            taskIn = new TaskInput(j, k, sampling);
-
-                            if(taskInMarsh)
-                                delete taskInMarsh;
-
-                            taskInMarsh = new MarshaledTaskInput(taskIn);
-
-                            TOPC_raw_submit_task_input( TOPC_MSG(taskInMarsh->getBuffer(), taskInMarsh->getBufferSize()) );
-                            match=true;
-                            break;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                for(int k=0; k<fsSizeMCNP; k++)
-                {
-                    ExtractZA(isoNameListMCNPGbl[k], zMCNP, aMCNP);
-                    if((zG4NDL==zMCNP)&&(aG4NDL==aMCNP))
-                    {
-                        if(taskIn)
-                            delete taskIn;
-
-                        taskIn = new TaskInput(j, k, sampling);
-
-                        if(taskInMarsh)
-                            delete taskInMarsh;
-
-                        taskInMarsh = new MarshaledTaskInput(taskIn);
-
-                        TOPC_raw_submit_task_input( TOPC_MSG(taskInMarsh->getBuffer(), taskInMarsh->getBufferSize()) );
-                        match=true;
-                        break;
-                    }
-                }
-            }
             while(nBar<int(j*80/fsSizeG4NDL))
             {
                 nBar++;
