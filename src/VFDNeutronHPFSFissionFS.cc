@@ -42,6 +42,7 @@
   void VFDNeutronHPFSFissionFS::Init (G4double A, G4double Z, G4int M, G4String & dirName, G4String & )
   {
     G4String tString = "/FS/";
+    hasDelayedInfo=false;
     G4bool dbool;
     G4NeutronHPDataUsed aFile = theNames.GetName(static_cast<G4int>(A), static_cast<G4int>(Z), M, dirName, tString, dbool);
     G4String filename = aFile.GetName();
@@ -75,7 +76,11 @@
           if(dataType==1) theFinalStateNeutrons.InitMean(theData);
           break;
         case 3:
-          if(dataType==1) theFinalStateNeutrons.InitDelayed(theData);
+          if(dataType==1)
+          {
+              theFinalStateNeutrons.InitDelayed(theData);
+              hasDelayedInfo=true;
+          }
           if(dataType==5) theDelayedNeutronEnDis.Init(theData);
           break;
         case 4:
@@ -92,6 +97,86 @@
     }
     targetMass = theFinalStateNeutrons.GetTargetMass();
     theData.close();
+  }
+
+  G4DynamicParticleVector * VFDNeutronHPFSFissionFS::ApplyYourself( const G4HadProjectile &aTrack, G4int nPrompt,G4int nDelayed, G4double * theDecayConst)
+  {
+    G4DynamicParticleVector * aResult = new G4DynamicParticleVector;
+    theNeutron.SetDefinition(const_cast<G4ParticleDefinition *>(aTrack.GetDefinition()));
+    theNeutron.SetMomentum( aTrack.Get4Momentum().vect() );
+    theNeutron.SetKineticEnergy( aTrack.GetKineticEnergy() );
+
+    // prepare target
+   G4Nucleus aNucleus;
+   theTarget = aNucleus.GetBiasedThermalNucleus( GetMass(), G4ThreeVector(1.,0.,0.), 0.);
+
+    G4int i;
+    G4ReactionProduct boosted;
+    boosted.Lorentz(theNeutron, theTarget);
+    G4double eKinetic = boosted.GetKineticEnergy();
+
+    theNeutronAngularDis.SetNeutron(theNeutron);
+    theNeutronAngularDis.SetTarget(theTarget);
+
+    //Build Photons
+    G4DynamicParticleVector * thePhotons;
+    thePhotons = GetPhotons();
+
+// Build neutrons
+    G4ReactionProduct * theNeutrons = new G4ReactionProduct[nPrompt+nDelayed];
+    for(i=0; i<nPrompt+nDelayed; i++)
+    {
+      theNeutrons[i].SetDefinition(G4Neutron::Neutron());
+    }
+
+// sample energies
+   G4int it, dummy;
+   G4double tempE;
+   for(i=0; i<nPrompt; i++)
+   {
+     tempE = thePromptNeutronEnDis.Sample(eKinetic, dummy); // energy distribution (file5) always in lab
+     theNeutrons[i].SetKineticEnergy(tempE);
+   }
+   for(i=nPrompt; i<nPrompt+nDelayed; i++)
+   {
+     theNeutrons[i].SetKineticEnergy(theDelayedNeutronEnDis.Sample(eKinetic, it));  // dito
+     if(it==0) theNeutrons[i].SetKineticEnergy(thePromptNeutronEnDis.Sample(eKinetic, dummy));
+     theDecayConst[i-nPrompt] = theFinalStateNeutrons.GetDecayConstant(it); // this is returned
+   }
+
+// sample neutron angular distribution
+   for(i=0; i<nPrompt+nDelayed; i++)
+   {
+     theNeutronAngularDis.SampleAndUpdate(theNeutrons[i]); // angular comes back in lab automatically
+   }
+
+// already in lab. Add neutrons to dynamic particle vector
+   for(i=0; i<nPrompt+nDelayed; i++)
+   {
+      G4DynamicParticle * dp = new G4DynamicParticle;
+      dp->SetDefinition(theNeutrons[i].GetDefinition());
+      dp->SetMomentum(theNeutrons[i].GetMomentum());
+      aResult->push_back(dp);
+   }
+   delete [] theNeutrons;
+// return the result
+
+    if(thePhotons!=0)
+   {
+     G4int nPhotons = thePhotons->size();
+     for(i=0; i<nPhotons; i++)
+     {
+       aResult->push_back((thePhotons->operator[](i)));
+     }
+     delete thePhotons;
+   }
+
+//    for(int x=0; x<theResult.GetNumberOfSecondaries(); x++)
+//    {
+//        delete theResult.GetSecondary(x)->GetParticle();
+//    }
+//    theResult.Clear();
+   return aResult;
   }
 
 
@@ -200,15 +285,34 @@ void VFDNeutronHPFSFissionFS::SampleNeutronMult(G4int&all, G4int&Prompt, G4int&d
      Prompt = 0;
      delayed = 0;
      G4double totalNeutronMulti = theFinalStateNeutrons.GetMean(eKinetic);
-     all = G4Poisson(totalNeutronMulti-off);
-     all += off;
+     //all = G4Poisson(totalNeutronMulti-off);
+     //all += off;
+     if(hasDelayedInfo)
+     {
+        all = floor(totalNeutronMulti+G4UniformRand());
+     }
+     else
+     {
+        all = floor(totalNeutronMulti);
+     }
    }
    else
    {
-     Prompt  = G4Poisson(promptNeutronMulti-off);
-     Prompt += off;
-     delayed = G4Poisson(delayedNeutronMulti);
-     all = Prompt+delayed;
+//     Prompt  = G4Poisson(promptNeutronMulti-off);
+//     Prompt += off;
+//     delayed = G4Poisson(delayedNeutronMulti);
+     if(hasDelayedInfo)
+     {
+        Prompt = floor(promptNeutronMulti+G4UniformRand());
+        delayed = floor(delayedNeutronMulti+G4UniformRand());
+        all = Prompt+delayed;
+     }
+     else
+     {
+        Prompt = floor(promptNeutronMulti);
+        delayed = 0;
+        all = Prompt+delayed;
+     }
    }
 }
 

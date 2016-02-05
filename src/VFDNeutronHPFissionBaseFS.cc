@@ -57,6 +57,19 @@
       return; // no data for exactly this isotope.
     }
 
+    if(bit=="/FC/")
+        offset=0;
+    else if(bit=="/SC/")
+        offset=1;
+    else if(bit=="/TC/")
+        offset=2;
+    else
+        offset=3;
+
+    G4String FSName = "/FS/";
+
+    theYieldData.Init(A, Z, M, dirName, FSName);
+
     std::ifstream theData(filename, std::ios::in);
     G4int dummy;
     if(!(theData))
@@ -91,6 +104,7 @@
 
 G4HadFinalState * VFDNeutronHPFissionBaseFS::ApplyYourself(const G4HadProjectile &aTrack)
   {
+
     theResult.Clear();
     theNeutron.SetDefinition(const_cast<G4ParticleDefinition *>(aTrack.GetDefinition()));
     theNeutron.SetMomentum( aTrack.Get4Momentum().vect() );
@@ -99,7 +113,8 @@ G4HadFinalState * VFDNeutronHPFissionBaseFS::ApplyYourself(const G4HadProjectile
     G4Nucleus aNucleus;
    theTarget = aNucleus.GetBiasedThermalNucleus( targetMass, G4ThreeVector(1.,0.,0.), 0.);
 
-    G4int nPrompt=3;
+    G4int nPrompt, all, delayed;
+
 // if therere were no data for this isotope, break out.
     if(!HasFSData()) { return 0; }
 
@@ -107,6 +122,32 @@ G4HadFinalState * VFDNeutronHPFissionBaseFS::ApplyYourself(const G4HadProjectile
     G4ReactionProduct boosted;
     boosted.Lorentz(theNeutron, theTarget);
     G4double eKinetic = boosted.GetKineticEnergy();
+
+    if(theYieldData.HasFSData())
+    {
+        theYieldData.SetNeutron(theNeutron);
+        theYieldData.SampleNeutronMult(all, nPrompt, delayed, eKinetic, offset);
+        if(nPrompt==0&&delayed==0) nPrompt=all;
+
+        G4double * theDecayConstants;
+        G4DynamicParticleVector * theDelayed = 0;
+        theDecayConstants = new G4double[delayed];
+        theDelayed = theYieldData.ApplyYourself(aTrack,0, delayed, theDecayConstants);
+
+         for(i=0; i<int(theDelayed->size()); i++)
+         {
+           G4double time = -std::log(G4UniformRand())/theDecayConstants[i];
+           theResult.AddSecondary(theDelayed->operator[](i));
+           theResult.GetSecondary(theResult.GetNumberOfSecondaries()-1)->SetTime(time);
+         }
+         delete [] theDecayConstants;
+         delete theDelayed;
+    }
+    else
+    {
+        nPrompt=3;
+    }
+
 
     theAngularDistribution.SetNeutron(theNeutron);
     theAngularDistribution.SetTarget(theTarget);

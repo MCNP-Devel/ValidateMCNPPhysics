@@ -51,6 +51,8 @@ class VFDNeutronHPFSFissionFS : public VFDNeutronHPFinalState
   void Init (G4double A, G4double Z, G4int M, G4String & dirName, G4String & aFSType);
 
   G4HadFinalState * ApplyYourself(const G4HadProjectile &aTrack);
+  G4DynamicParticleVector * ApplyYourself(G4int Prompt, G4int delayed, G4double *decayconst);
+  G4DynamicParticleVector * ApplyYourself( const G4HadProjectile &aTrack, G4int nPrompt,G4int nDelayed, G4double * theDecayConst);
 
   VFDNeutronHPFinalState * New()
   {
@@ -88,6 +90,7 @@ class VFDNeutronHPFSFissionFS : public VFDNeutronHPFinalState
   private:
 
   G4double targetMass;
+  G4bool hasDelayedInfo;
 
   G4NeutronHPNeutronYield theFinalStateNeutrons;
   VFDNeutronHPEnergyDistribution thePromptNeutronEnDis;

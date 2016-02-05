@@ -18,7 +18,7 @@ void FSSpectrumData::AddData(G4HadFinalState* result)
     pSecY = nSecY = nDelY = 0;
 
     numSec=result->GetNumberOfSecondaries();
-    AddPrimary(result[0]);
+    AddSecondary(result[0]);
 
     for(int s=0; s<numSec; s++)
     {
@@ -50,85 +50,40 @@ void FSSpectrumData::AddData(G4HadFinalState* result)
     result->Clear();
 }
 
+void FSSpectrumData::AddSecondary(G4HadFinalState &nSec)
+{
+    if(nSec.GetEnergyChange()>0.)
+    {
+        nSecMomAngle.push_back(std::cos(std::sqrt(std::pow(nSec.GetMomentumChange().getPhi(),2)+std::pow(nSec.GetMomentumChange().getTheta(),2))));
+        nSecKEn.push_back(std::log10(nSec.GetEnergyChange()));
+    }
+}
+
 void FSSpectrumData::AddSecondary(G4DynamicParticle &nSec)
 {
-    nSecMomAngle.push_back(std::sqrt(std::pow(nSec.GetMomentumDirection().getPhi(),2)+std::pow(nSec.GetMomentumDirection().getTheta(),2)));
-    nSecKEn.push_back(std::log10(nSec.GetKineticEnergy()));
+    if(nSec.GetKineticEnergy()>0.)
+    {
+        nSecMomAngle.push_back(std::cos(std::sqrt(std::pow(nSec.GetMomentumDirection().getPhi(),2)+std::pow(nSec.GetMomentumDirection().getTheta(),2))));
+        nSecKEn.push_back(std::log10(nSec.GetKineticEnergy()));
+    }
 }
 
 void FSSpectrumData::AddDelayed(G4DynamicParticle &nDel)
 {
-    nDelMomAngle.push_back(std::sqrt(std::pow(nDel.GetMomentumDirection().getPhi(),2)+std::pow(nDel.GetMomentumDirection().getTheta(),2)));
-    nDelKEn.push_back(std::log10(nDel.GetKineticEnergy()));
+    if(nDel.GetKineticEnergy()>0.)
+    {
+        nDelMomAngle.push_back(std::cos(std::sqrt(std::pow(nDel.GetMomentumDirection().getPhi(),2)+std::pow(nDel.GetMomentumDirection().getTheta(),2))));
+        nDelKEn.push_back(std::log10(nDel.GetKineticEnergy()));
+    }
 }
 
 void FSSpectrumData::AddPhoton(G4DynamicParticle &pSec)
 {
-    pSecMomAngle.push_back(std::sqrt(std::pow(pSec.GetMomentumDirection().getPhi(),2)+std::pow(pSec.GetMomentumDirection().getTheta(),2)));
-    pSecKEn.push_back(std::log10(pSec.GetKineticEnergy()));
-}
-
-double FSSpectrumData::CompareFSData(std::string &outFileName, double **mcnpIsoData, bool *relevantData)
-{
-    std::stringstream stream;
-    double totalDiff=0.;
-
-    if(relevantData[0])
+    if(pSec.GetKineticEnergy()>0.)
     {
-        stream << "Comparing the secondary neutron deflection angle" << std::endl;
-        totalDiff+=CompareHist(stream, nSecMomAngle, mcnpIsoData[0]);
+        pSecMomAngle.push_back(std::cos(std::sqrt(std::pow(pSec.GetMomentumDirection().getPhi(),2)+std::pow(pSec.GetMomentumDirection().getTheta(),2))));
+        pSecKEn.push_back(std::log10(pSec.GetKineticEnergy()));
     }
-
-    if(relevantData[1])
-    {
-        stream << "Comparing the delayed neutron deflection angle" << std::endl;
-        totalDiff+=CompareHist(stream, nDelMomAngle, mcnpIsoData[1]);
-    }
-
-    if(relevantData[2])
-    {
-        stream << "Comparing the secondary photon deflection angle" << std::endl;
-        totalDiff+=CompareHist(stream, pSecMomAngle, mcnpIsoData[2]);
-    }
-
-    if(relevantData[3])
-    {
-        stream << "Comparing the secondary neutron kinetic energy" << std::endl;
-        totalDiff+=CompareHist(stream, nSecKEn, mcnpIsoData[3]);
-    }
-
-    if(relevantData[4])
-    {
-        stream << "Comparing the delayed neutron kinetic energy" << std::endl;
-        totalDiff+=CompareHist(stream, nDelKEn, mcnpIsoData[4]);
-    }
-
-    if(relevantData[5])
-    {
-        stream << "Comparing the secondary photon kinetic energy" << std::endl;
-        totalDiff+=CompareHist(stream, pSecKEn, mcnpIsoData[5]);
-    }
-
-    if(relevantData[6])
-    {
-        stream << "Comparing the secondary neutron yield" << std::endl;
-        totalDiff+=CompareHist(stream, nSecYield, mcnpIsoData[6]);
-    }
-
-    if(relevantData[7])
-    {
-        stream << "Comparing the delayed neutron yield" << std::endl;
-        totalDiff+=CompareHist(stream, nDelYield, mcnpIsoData[7]);
-    }
-
-    if(relevantData[8])
-    {
-        stream << "Comparing the secondary photon yield" << std::endl;
-        totalDiff+=CompareHist(stream, pSecYield, mcnpIsoData[8]);
-    }
-
-    SetDataStream( outFileName, stream, false );
-    return totalDiff;
 }
 
 double FSSpectrumData::CompareFSData(std::string &outFileName, double **mcnpIsoData, int dataTypeIndex, double *binBounds, int binVecSize)
@@ -246,10 +201,10 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
                 {
                     stream << "Diff Sq Hist" << std::endl;
                 }
-                for(int j=0; j<numBinBound-1; j++)
+                for(int j=0; j<numBinBound; j++)
                 {
                     stream << std::setw(14) << std::right << 0.;
-                    if(((j+1)%6==0)||(j==numBinBound-2))
+                    if(((j+1)%6==0)||(j==numBinBound-1))
                         stream << '\n';
                 }
             }
@@ -257,23 +212,21 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
         }
     }
 
-    double *g4ndlHist = new double [numBinBound-1];
-    double *mcnpHist = new double [numBinBound-1];
-    double *diffHist = new double [numBinBound-1];
-    for(int i=0; i<numBinBound-1; i++)
+    double *g4ndlHist = new double [numBinBound];
+    double *diffHist = new double [numBinBound];
+    for(int i=0; i<numBinBound; i++)
     {
         g4ndlHist[i]=0.;
-        mcnpHist[i]=0.;
         diffHist[i]=0.;
     }
 
     for(int i=0; i<int(g4ndlData.size()); i++)
     {
-        for(int j=1; j<numBinBound-1; j++)
+        for(int j=0; j<numBinBound; j++)
         {
-            if(g4ndlData[i]<=binDim[j])
+            if((g4ndlData[i]<=binDim[j])||(j==numBinBound-1))
             {
-                g4ndlHist[j-1]++;
+                g4ndlHist[j]++;
                 break;
             }
         }
@@ -298,28 +251,28 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
     }
 
     stream << "G4NDL Hist" << std::endl;
-    for(int j=0; j<numBinBound-1; j++)
+    for(int j=0; j<numBinBound; j++)
     {
         stream << std::setw(14) << std::right << g4ndlHist[j];
-        if(((j+1)%6==0)||(j==numBinBound-2))
+        if(((j+1)%6==0)||(j==numBinBound-1))
             stream << '\n';
     }
 
     stream << "MCNP Hist" << std::endl;
-    for(int j=0; j<numBinBound-1; j++)
+    for(int j=0; j<numBinBound; j++)
     {
         stream << std::setw(14) << std::right << mcnpIsoData[j];
-        if(((j+1)%6==0)||(j==numBinBound-2))
+        if(((j+1)%6==0)||(j==numBinBound-1))
             stream << '\n';
     }
 
     stream << "Diff Sq Hist" << std::endl;
-    for(int j=0; j<numBinBound-1; j++)
+    for(int j=0; j<numBinBound; j++)
     {
         diffHist[j] = std::pow(mcnpIsoData[j]-g4ndlHist[j],2);
         sumDiff+=diffHist[j];
         stream << std::setw(14) << std::right << diffHist[j];
-        if(((j+1)%6==0)||(j==numBinBound-2))
+        if(((j+1)%6==0)||(j==numBinBound-1))
             stream << '\n';
     }
 
@@ -330,6 +283,56 @@ double FSSpectrumData::CompareHist(std::stringstream &stream, std::vector<double
 
     stream << '\n';
     return sumDiff;
+}
+
+bool FSSpectrumData::HasData(int dataTypeIndex)
+{
+    bool hasData=false;
+    if(dataTypeIndex==0)
+    {
+        (nSecMomAngle.size()==0) ? (hasData=false) : (hasData=true);
+    }
+
+    else if(dataTypeIndex==1)
+    {
+        (nDelMomAngle.size()==0) ? (hasData=false) : (hasData=true);
+    }
+
+    else if(dataTypeIndex==2)
+    {
+        (pSecMomAngle.size()==0) ? (hasData=false) : (hasData=true);
+    }
+
+    else if(dataTypeIndex==3)
+    {
+        (nSecKEn.size()==0) ? (hasData=false) : (hasData=true);
+    }
+
+    else if(dataTypeIndex==4)
+    {
+        (nDelKEn.size()==0) ? (hasData=false) : (hasData=true);
+    }
+
+    else if(dataTypeIndex==5)
+    {
+        (pSecKEn.size()==0) ? (hasData=false) : (hasData=true);
+    }
+
+    else if(dataTypeIndex==6)
+    {
+        (nSecYield.size()==0) ? (hasData=false) : (hasData=true);
+    }
+
+    else if(dataTypeIndex==7)
+    {
+        (nDelYield.size()==0) ? (hasData=false) : (hasData=true);
+    }
+
+    else if(dataTypeIndex==8)
+    {
+        (pSecYield.size()==0) ? (hasData=false) : (hasData=true);
+    }
+    return hasData;
 }
 
 void FSSpectrumData::GetBinLimits(double &minVal, double &maxVal, int dataTypeIndex, bool &hasData)

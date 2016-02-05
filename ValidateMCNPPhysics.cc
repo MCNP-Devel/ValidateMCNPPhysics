@@ -72,7 +72,6 @@
 #include "include/VFDIonTable.hh"
 
 #define SetNumEnerFlag 1
-#define numIncEner 261
 #define numPointPerOrder 20
 #define numDataTypes 9
 #define numFS 36
@@ -92,26 +91,30 @@
 // we took out the recoiling isotope as a secondary for efficiency sake since we don't look at it, to add back in search for it using GetIon key word
 // we filter out photons with zero kinetic energy from the results
 // we got rid of photon and delayed data for fission and inelastic reaction since we want to just focus on checking that the neutronics is correct for now
+// we turned off the creation of photons by setting by immediately returning null in GetPhoton() functions, this may affect the physics since the photon energy reduces the Qvalue of the reaction
+// we modified the methodology of G4NeutronHPLabAngularEnergyDist to give correct results
+// modified the neutron yield for the fission process so that it more closesly matched the mcnp yield, it only goes between two values and it is proportionately more probable for it to go to the closest value
+// modified the fission yield again so that it floors the yield when there is no delayed data to match mcnp
 
 // 080808 Something unexpected is happen in G4NeutronHPLabAngularEnergy is caused by the energy regime of the angular-energy not extending down to the minimum energy supplied in the cross-section data, this is not our fault
 // this is the fault of the G4NDL data, and seems to mainly occur for the isotopes of berylium
 using namespace std;
 
-void ExtractDir(G4String dirName, VFDNeutronHPFinalState ***isoFSData, string **isoNameList, int &vecSize, VFDNeutronHPFinalState *fsType, std::pair <double,double> **enerBound);
+void ExtractDir(G4String dirName, VFDNeutronHPFinalState ***isoFSData, string **isoNameList, int &vecSize, VFDNeutronHPFinalState *fsType);
 #if TOPC_USE
-    double CompareData(string outDir, int fsSizeG4NDL, int fsSizeMCNP, bool sampling);
+    double CompareData(string outDir, int fsSizeG4NDL, bool sampling);
 #else
-    double CompareData(string outDir, string *isoNameListG4NDL, VFDNeutronHPFinalState **isoFSDataG4NDL, int fsSizeG4NDL, std::pair <double,double> *enerBoundG4NDL, string *isoNameListMCNP, VFDNeutronHPFinalState **isoFSDataMCNP, int fsSizeMCNP, std::pair <double,double> *enerBoundMCNP, bool sampling, bool *relevantData);
+    double CompareData(string outDir, string *isoNameListG4NDL, VFDNeutronHPFinalState **isoFSDataG4NDL, int fsSizeG4NDL, bool sampling, bool *relevantData);
 #endif
-double CalcDiff(string outFileName, VFDNeutronHPFinalState *isoFSDataG4NDL, std::pair <double,double> enerBoundG4NDL, VFDNeutronHPFinalState *isoFSDataMCNP, std::pair <double,double> enerBoundMCNP, bool sampling, bool *relevantData);
+double CalcDiff(string outFileName, int isoIndex, bool sampling, bool *relevantData, double *binBounds);
 void ExtractZA(string fileName, int &Z, int &A);
 void ExtractZA(string fileName, string &Z, string &A);
 bool DirectoryExists( const char* pzPath );
 void GetDataStream( string filename, std::stringstream& ss);
 void SetDataStream( string filename , std::stringstream& ss, bool overWrite );
 
-double incEnerVec[numIncEner];
-int incEnerSize;
+double *incEnerVec;
+int numIncEner;
 //G4Track *nTrack;
 G4DynamicParticle *nParticle;
 bool master;
@@ -135,6 +138,7 @@ std::pair<double,double> *enerBoundG4NDLGbl;
 bool *relevantDataGbl[numFS];
 double *sumErrorVecGbl;
 double binBounds[3][numBins];
+int processID;
 
 string fsDirNameListGbl[numFS] = {"Elastic/FS/", "Capture/FS/", "Fission/FS/", "Fission/FC/", "Fission/SC/", "Fission/TC/", "Fission/LC/", "Inelastic/F01/",
                                     "Inelastic/F02/", "Inelastic/F04/", "Inelastic/F05/", "Inelastic/F06/", "Inelastic/F07/", "Inelastic/F08/", "Inelastic/F09/",
@@ -153,89 +157,128 @@ TOPC_BUF CalcDiff(void *input)
     MarshaledTaskInput inputTaskMarsh(input);
     TaskInput *inputTask = inputTaskMarsh.unmarshal();
     char line[256];
-	double dummy;
-	double mcnpIsoData[numIncEner][numDataTypes][numBins];
+	double dummy, sumCheck;
+	double totalDiff=0.;
+
     bool relevantDataMCNP[numDataTypes];
 
-    int j = inputTask->g4ndlIndex;
+    int isoIndex = inputTask->g4ndlIndex;
     bool sampling = inputTask->sampling;
 
     if(inputTask)
         delete inputTask;
 
-    string outFileName = outDirGbl+fsDirNameListGbl[fsIndexGbl]+isoNameListG4NDLGbl[j]+".txt";
-    string inMCNPFileName = inMCNPFSDirGbl+fsDirNameListGbl[fsIndexGbl]+isoNameListG4NDLGbl[j].substr(0,isoNameListG4NDLGbl[j].find_last_of('_'))+".txt";
+    string outFileName = outDirGbl+fsDirNameListGbl[fsIndexGbl]+isoNameListG4NDLGbl[isoIndex]+".txt";
+    string inMCNPFileName = inMCNPFSDirGbl+fsDirNameListGbl[fsIndexGbl]+isoNameListG4NDLGbl[isoIndex].substr(0,isoNameListG4NDLGbl[isoIndex].find_last_of('_'))+".txt";
 
-    stringstream inMCNPFile;
-    GetDataStream(inMCNPFileName, inMCNPFile);
+    stringstream inMCNP, stream;
 
-    stringstream stream;
+    GetDataStream(inMCNPFileName, inMCNP);
 
-    stream.getline(line,256);
-    stream.getline(line,256);
-    stream.getline(line,256);
-    stream.getline(line,256);
+    if(!inMCNP.good())
+    {
+        if(taskOut)
+            delete taskOut;
+        taskOut = new TaskOutput(-1);
+
+        if(taskOutMarsh)
+            delete taskOutMarsh;
+        taskOutMarsh = new MarshaledTaskOutput(taskOut);
+
+        return TOPC_MSG( taskOutMarsh->getBuffer(), taskOutMarsh->getBufferSize());
+    }
+
+    inMCNP.getline(line,256);
+    inMCNP >> numIncEner;
+    inMCNP.getline(line,256);
+    inMCNP.getline(line,256);
+    inMCNP.getline(line,256);
+
+    incEnerVec = new double [numIncEner];
+    double *** mcnpIsoData = new double **[numIncEner];
+    for(int i=0; i<numIncEner; i++)
+    {
+        mcnpIsoData[i] = new double *[numDataTypes];
+        for(int j=0; j<numDataTypes; j++)
+        {
+            mcnpIsoData[i][j] = new double [numBins];
+        }
+    }
 
     for(int i=0; i<numDataTypes; i++)
     {
-        stream >> relevantDataMCNP[i];
+        inMCNP >> relevantDataMCNP[i];
     }
+
 
 	for (int i = 0; i<numIncEner; i++)
 	{
-		stream >> dummy;
+		inMCNP >> dummy;
+		incEnerVec[i] = dummy;
 	}
 
 	for (int i = 0; i<numDataTypes; i++)
 	{
-		stream.getline(line, 256);
-		stream.getline(line, 256);
-		stream.getline(line, 256);
-		for (int k = 0; k < numBins; k++)
-		{
-			stream >> dummy;
-		}
-
 		if (relevantDataMCNP[i] == 1)
 		{
-			for (int j = 0; j < numIncEner; j++)
+            inMCNP.getline(line, 256);
+            inMCNP.getline(line, 256);
+            inMCNP.getline(line, 256);
+            for (int k = 0; k < numBins; k++)
+            {
+                inMCNP >> dummy;
+            }
+            sumCheck=0.;
+			for(int j = 0; j < numIncEner; j++)
 			{
 				for (int k = 0; k < numBins; k++)
 				{
-					stream >> dummy;
+					inMCNP >> dummy;
 					mcnpIsoData[j][i][k] = dummy;
+					sumCheck+=dummy;
 				}
+			}
+			if(sumCheck==0.)
+			{
+                relevantDataMCNP[i]=0;
 			}
 		}
 	}
 
     G4HadProjectile *projectile;
     int points=1;
-    double totalDiff=0.;
-    FSSpectrumData *fsDataG4NDL;
+    FSSpectrumData *fsDataG4NDL = new FSSpectrumData [numIncEner];
     G4HadFinalState *resultG4NDLVec;
 
-    fsDataG4NDL = new FSSpectrumData [incEnerSize];
+    stream.clear();
+    stream.str("");
 
-    stream << "Comparison of G4NDL Data to the Converted MCNP data using\n" << incEnerSize << " incoming energy points\n" << numBins << " bins per histogram\n" << std::endl;
+    stream << "Comparison of G4NDL Data to the Converted MCNP data using\n" << numIncEner << " incoming energy points\n" << numBins << " bins per histogram\n" << std::endl;
     for(int i=0; i<numDataTypes; i++)
     {
-        stream << relevantDataGbl[fsIndexGbl][i] << '\t';
+        if((relevantDataGbl[fsIndexGbl][i])&&(relevantDataMCNP[i]))
+        {
+            stream << 1 << '\t';
+        }
+        else
+        {
+            stream << 0 << '\t';
+        }
     }
     stream << '\n' << endl;
 
     stream << std::setprecision(6);
-    for(int i=0; i<incEnerSize; i++)
+    for(int i=0; i<numIncEner; i++)
     {
         stream << std::setw(14) << std::right << incEnerVec[i];
-        if(((i+1)%6==0)||(i==incEnerSize-1))
+        if(((i+1)%6==0)||(i==numIncEner-1))
             stream << '\n';
     }
 
     SetDataStream( outFileName, stream, true);
 
 
-    for(int i=0; i<incEnerSize; i++)
+    for(int i=0; i<numIncEner; i++)
     {
         nParticle->SetKineticEnergy(incEnerVec[i]);
         projectile = new G4HadProjectile(*nParticle);
@@ -246,8 +289,8 @@ TOPC_BUF CalcDiff(void *input)
         }
         for(int l=0; l<points; l++)
         {
-            resultG4NDLVec = isoFSDataG4NDLGbl[j]->ApplyYourself(*projectile);
-            if((resultG4NDLVec==0))
+            resultG4NDLVec = isoFSDataG4NDLGbl[isoIndex]->ApplyYourself(*projectile);
+            if(resultG4NDLVec==0)
             {
                 stream.clear();
                 stream.str("");
@@ -257,7 +300,7 @@ TOPC_BUF CalcDiff(void *input)
 
                 if(taskOut)
                     delete taskOut;
-                taskOut = new TaskOutput(totalDiff/incEnerSize);
+                taskOut = new TaskOutput(-1);
 
                 if(taskOutMarsh)
                     delete taskOutMarsh;
@@ -270,21 +313,15 @@ TOPC_BUF CalcDiff(void *input)
         }
         delete projectile;
     }
-    bool hasData;
+
     int boundType;
     for(int h=0; h<numDataTypes; h++)
     {
         if((relevantDataGbl[fsIndexGbl][h])&&(relevantDataMCNP[h]))
         {
-            hasData=false;
             stream.clear();
             stream.str("");
             stream << '\n' << dataTypeHeaders[h] << '\n' << std::endl;
-
-            if(!hasData)
-            {
-                continue;
-            }
 
             boundType=floor(h/3);
 
@@ -296,20 +333,44 @@ TOPC_BUF CalcDiff(void *input)
             }
             SetDataStream( outFileName, stream, false);
 
-            for(int i=0; i<incEnerSize; i++)
+            for(int i=0; i<numIncEner; i++)
             {
+//                if(!fsDataG4NDL[i].HasData(h))
+//                {
+//                    continue;
+//                }
                 totalDiff+=fsDataG4NDL[i].CompareFSData(outFileName, mcnpIsoData[i], h, binBounds[boundType], numBins);
             }
         }
     }
 
-    delete [] fsDataG4NDL;
-    delete isoFSDataG4NDLGbl[j];
-    isoFSDataG4NDLGbl[j]=NULL;
+
+    if(incEnerVec)
+        delete [] incEnerVec;
+    if(fsDataG4NDL)
+        delete [] fsDataG4NDL;
+    if(isoFSDataG4NDLGbl[isoIndex])
+    {
+        delete isoFSDataG4NDLGbl[isoIndex];
+        isoFSDataG4NDLGbl[isoIndex]=NULL;
+    }
+    for(int i=0; i<numIncEner; i++)
+    {
+        for(int j=0; j<numDataTypes; j++)
+        {
+            if(mcnpIsoData[i][j])
+                delete [] mcnpIsoData[i][j];
+        }
+        if(mcnpIsoData[i])
+            delete [] mcnpIsoData[i];
+    }
+    if(mcnpIsoData)
+        delete [] mcnpIsoData;
+
 
     if(taskOut)
         delete taskOut;
-    taskOut = new TaskOutput(totalDiff/incEnerSize);
+    taskOut = new TaskOutput(totalDiff/numIncEner);
 
     if(taskOutMarsh)
         delete taskOutMarsh;
@@ -350,7 +411,7 @@ int main (int argc, char** argv)
 	TOPC_OPT_slave_timeout=6048000;
     TOPC_init(&argc, &argv);
     master = bool(TOPC_is_master());
-    //int processID = TOPC_rank();
+    processID = TOPC_rank();
 #else
     master=true;
 #endif
@@ -401,8 +462,8 @@ int main (int argc, char** argv)
 
     //nTrack = new G4Track(apValueDynamicParticle, 0., G4ThreeVector(0.,0.,0.));
 
-    int fsSizeG4NDL=0, fsSizeMCNP=0;
-    double tempDiff, binInc, incNEner, energyStep;
+    int fsSizeG4NDL=0;
+    double tempDiff, binInc;
     vector<double> sumDiffVec;
     string G4NDLDir, compareCS="false", dirName, temp;
     ElementNames* elementNames;
@@ -418,14 +479,13 @@ int main (int argc, char** argv)
                                     "Inelastic/F28/", "Inelastic/F30/", "Inelastic/F31/", "Inelastic/F33/", "Inelastic/F34/", "Inelastic/F35/","Inelastic/F36/"};
     int fsIndexGbl;
     string outDirGbl;
-    string *isoNameListG4NDLGbl, *isoNameListMCNPGbl;
-    VFDNeutronHPFinalState **isoFSDataG4NDLGbl, **isoFSDataMCNPGbl;
-    std::pair<double,double> *enerBoundG4NDLGbl, *enerBoundMCNPGbl;
+    string *isoNameListG4NDLGbl;
+    VFDNeutronHPFinalState **isoFSDataG4NDLGbl;
     bool *relevantDataGbl[numDataTypes];
 #endif
 
     string fileName;
-    bool relDataTemp[5][numDataTypes] = {{1, 0, 0, 1, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0, 0, 0}, {1, 1, 0, 1, 1, 0, 1, 1, 0}, {1, 0, 0, 1, 0, 0, 1, 0, 0},{1, 0, 0, 1, 0, 0, 1, 0, 0}};
+    bool relDataTemp[5][numDataTypes] = {{1, 0, 0, 1, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0, 0, 0}, {1, 1, 0, 1, 1, 0, 1, 1, 0}, {1, 1, 0, 1, 1, 0, 1, 1, 0},{1, 0, 0, 1, 0, 0, 1, 0, 0}};
     relevantDataGbl[0] = relDataTemp[0];
     relevantDataGbl[1] = relDataTemp[1];
     relevantDataGbl[2] = relDataTemp[2];
@@ -438,41 +498,25 @@ int main (int argc, char** argv)
         relevantDataGbl[i] = relDataTemp[4];
     }
 
-	incNEner = 1.0E-05;
-	for (int i = 0; i < 13; i++)
-	{
-		if (10 * incNEner > 20.0)
-			energyStep = (20.0 - incNEner) / numPointPerOrder;
-		else
-			energyStep = (9 * incNEner) / numPointPerOrder;
-		for (int j = 0; j < numPointPerOrder; j++)
-		{
-			incEnerVec[(i - 1)*numPointPerOrder + j] = incNEner;
-			incNEner = incNEner + energyStep;
-		}
-	}
-
-	incEnerVec[numIncEner] = incNEner;
-
-    binInc = 2*3.1415927/(numBins);
-    binBounds[0][0] = -3.1415927+binInc;
+    binInc = 2/(numBins);
+    binBounds[0][0] = -1+binInc;
     for(int i=1; i<numBins; i++)
     {
         binBounds[0][i]=binBounds[0][i-1]+binInc;
     }
 
-    binInc = (log10(20.0)+6)/(numBins-1);
-    binBounds[0][0] = -6;
+    binInc = (log10(100.0)+11)/(numBins-1);
+    binBounds[1][0] = -11;
     for(int i=1; i<numBins; i++)
     {
-        binBounds[0][i]=binBounds[0][i-1]+binInc;
+        binBounds[1][i]=binBounds[1][i-1]+binInc;
     }
 
     binInc = 20.0/(numBins-1);
-    binBounds[0][0] = 0;
+    binBounds[2][0] = 0;
     for(int i=1; i<numBins; i++)
     {
-        binBounds[0][i]=binBounds[0][i-1]+binInc;
+        binBounds[2][i]=binBounds[2][i-1]+binInc;
     }
 
     VFDNeutronHPFinalState* fsTypeList[numFS] = {new VFDNeutronHPElasticFS, new VFDNeutronHPCaptureFS, new VFDNeutronHPFSFissionFS, new VFDNeutronHPFissionBaseFS, new VFDNeutronHPFissionBaseFS
@@ -524,7 +568,7 @@ int main (int argc, char** argv)
         }
         else
         {
-            cout << "Please input the G4NDL data directory, the directory contianing the converted MCNP data, the output directory, and the compare CS data flag" << endl;
+            cout << "Please input the G4NDL data directory, the directory contianing the generated MCNP energy histogram data, the output directory, and the compare CS data flag" << endl;
             for(int i=0; i<numFS; i++)
             {
                 delete fsTypeList[i];
@@ -552,15 +596,14 @@ int main (int argc, char** argv)
     {
         if(master)
             cout << "\n\nExtracting Directory " << G4NDLDir+fsDirNameListGbl[fsIndexGbl] << endl;
-        ExtractDir(G4NDLDir+fsDirNameListGbl[fsIndexGbl], &isoFSDataG4NDLGbl, &isoNameListG4NDLGbl, fsSizeG4NDL, fsTypeList[fsIndexGbl], &enerBoundG4NDLGbl);
+        ExtractDir(G4NDLDir+fsDirNameListGbl[fsIndexGbl], &isoFSDataG4NDLGbl, &isoNameListG4NDLGbl, fsSizeG4NDL, fsTypeList[fsIndexGbl]);
         if(master)
             cout << "\nComparing FS Data " << G4NDLDir+fsDirNameListGbl[fsIndexGbl] << endl;
 
         #if TOPC_USE
-        sumDiffVec.push_back(CompareData(outDirGbl+fsDirNameListGbl[fsIndexGbl], fsSizeG4NDL, fsSizeMCNP, true));
+        sumDiffVec.push_back(CompareData(outDirGbl+fsDirNameListGbl[fsIndexGbl], fsSizeG4NDL, true));
         #else
-        sumDiffVec.push_back(CompareData(outDirGbl+fsDirNameListGbl[fsIndexGbl], isoNameListG4NDLGbl, isoFSDataG4NDLGbl, fsSizeG4NDL, enerBoundG4NDLGbl,
-                                            isoNameListMCNPGbl, isoFSDataMCNPGbl, fsSizeMCNP, enerBoundMCNPGbl, true, relevantDataGbl[fsIndexGbl]));
+        sumDiffVec.push_back(CompareData(outDirGbl+fsDirNameListGbl[fsIndexGbl], isoNameListG4NDLGbl, isoFSDataG4NDLGbl, fsSizeG4NDL, true, relevantDataGbl[fsIndexGbl]));
         #endif
 
         if(master)
@@ -578,7 +621,6 @@ int main (int argc, char** argv)
         {
             delete [] isoFSDataG4NDLGbl;
             delete [] isoNameListG4NDLGbl;
-            delete [] enerBoundG4NDLGbl;
         }
     }
     for(int i=0; i<numFS; i++)
@@ -629,7 +671,7 @@ int main (int argc, char** argv)
     return 0;
 }
 
-void ExtractDir(G4String dirName, VFDNeutronHPFinalState ***isoFSData, string **isoNameList, int &vecSize, VFDNeutronHPFinalState *fsType, std::pair <double,double> **enerBound)
+void ExtractDir(G4String dirName, VFDNeutronHPFinalState ***isoFSData, string **isoNameList, int &vecSize, VFDNeutronHPFinalState *fsType)
 {
     int i, j;
     int Z, A, pos1, pos2;
@@ -688,12 +730,8 @@ void ExtractDir(G4String dirName, VFDNeutronHPFinalState ***isoFSData, string **
     vecSize=isoNameVec.size();
     isoFSData[0] = new VFDNeutronHPFinalState *[vecSize];
     isoNameList[0] = new string [vecSize];
-    enerBound[0] = new std::pair<double,double> [vecSize];
 
     IsotopeMass* isoMasses;
-    int total;
-    double minE, maxE, dummy, dummyE;
-    stringstream stream;
 
     for(i=0; i<int(isoNameVec.size()); i++)
     {
@@ -701,34 +739,6 @@ void ExtractDir(G4String dirName, VFDNeutronHPFinalState ***isoFSData, string **
         isoNameList[0][i] = isoNameVec[i];
         ExtractZA(isoNameList[0][i], Z, A);
         isoFSData[0][i]->Init(A, Z, 0, dirName, theFSType);
-
-        if(isoFSData[0][i]->HasXsec())
-        {
-            enerBound[0][i].first = (1+1.0e-5)*isoFSData[0][i]->GetMinEnergy();
-            enerBound[0][i].second = (1-1.0e-5)*isoFSData[0][i]->GetMaxEnergy();
-        }
-        else
-        {
-
-            GetDataStream(dirName+"CrossSection/"+isoNameList[0][i], stream);
-            stream >> dummy >> dummy >> total;
-            stream >> minE >> dummy;
-            maxE=minE;
-            for(j=0; j<total-1; j++)
-            {
-                stream >> dummyE >> dummy;
-                if(dummy!=0.)
-                {
-                    maxE=dummyE;
-                }
-            }
-
-            enerBound[0][i].first = (1+1.0e-5)*minE/1.0e+06;
-            enerBound[0][i].second = (1-1.0e-5)*maxE/1.0e+06;
-
-            stream.str("");
-            stream.clear();
-        }
 
         VFDNeutronHPFissionBaseFS *fisBaseFS = dynamic_cast<VFDNeutronHPFissionBaseFS*>(isoFSData[0][i]);
         if(fisBaseFS)
@@ -751,7 +761,6 @@ double CompareData(string outDir, int fsSizeG4NDL, bool sampling)
 
     if(master)
     {
-        bool match;
         sumErrorVecGbl = new double[fsSizeG4NDL];
         for(int i=0; i<fsSizeG4NDL; i++)
         {
@@ -779,11 +788,11 @@ double CompareData(string outDir, int fsSizeG4NDL, bool sampling)
         int nBar=0;
         for(int j=0; j<fsSizeG4NDL; j++)
         {
-//           
+//
 			if(taskIn)
 				delete taskIn;
 
-			taskIn = new TaskInput(j, k, sampling);
+			taskIn = new TaskInput(j, 0, sampling);
 
 			if (taskInMarsh)
 				delete taskInMarsh;
@@ -843,8 +852,7 @@ double CompareData(string outDir, int fsSizeG4NDL, bool sampling)
 }
 
 #else
-double CompareData(string outDir, string *isoNameListG4NDL, VFDNeutronHPFinalState **isoFSDataG4NDL, int fsSizeG4NDL, std::pair <double,double> *enerBoundG4NDL,
-                    string *isoNameListMCNP, VFDNeutronHPFinalState **isoFSDataMCNP, int fsSizeMCNP, std::pair <double,double> *enerBoundMCNP, bool sampling, bool *relevantData)
+double CompareData(string outDir, string *isoNameListG4NDL, VFDNeutronHPFinalState **isoFSDataG4NDL, int fsSizeG4NDL, bool sampling, bool *relevantData)
 {
     double sumDiff=0.;
     double* sumErrorVecGbl;
@@ -861,7 +869,6 @@ double CompareData(string outDir, string *isoNameListG4NDL, VFDNeutronHPFinalSta
         {
             sumErrorVecGbl[i]=-1;
         }
-        string zG4NDL, zMCNP, aG4NDL, aMCNP;
         stream << "The FS files that have been compared in this directory, ordered from greatest to lowest discrepancy\n" << std::endl;
 
         if(!(DirectoryExists((outDir).c_str())))
@@ -884,46 +891,9 @@ double CompareData(string outDir, string *isoNameListG4NDL, VFDNeutronHPFinalSta
         for(int j=0; j<fsSizeG4NDL; j++)
         {
             match=false;
-            ExtractZA(isoNameListG4NDL[j], zG4NDL, aG4NDL);
-            if(j<fsSizeMCNP)
-            {
-                for(int k=j; k<fsSizeMCNP; k++)
-                {
-                    ExtractZA(isoNameListMCNP[k], zMCNP, aMCNP);
-                    if((zG4NDL==zMCNP)&&(aG4NDL==aMCNP))
-                    {
-                        sumErrorVecGbl[j]=(CalcDiff(outDir+isoNameListG4NDL[j]+".txt", isoFSDataG4NDL[j], enerBoundG4NDL[j], isoFSDataMCNP[k], enerBoundMCNP[k], sampling, relevantData));
-                        match=true;
-                        break;
-                    }
-                }
-                if(!match)
-                {
-                    for(int k=0; k<j; k++)
-                    {
-                        ExtractZA(isoNameListMCNP[k], zMCNP, aMCNP);
-                        if((zG4NDL==zMCNP)&&(aG4NDL==aMCNP))
-                        {
-                            sumErrorVecGbl[j]=(CalcDiff(outDir+isoNameListG4NDL[j]+".txt", isoFSDataG4NDL[j], enerBoundG4NDL[j], isoFSDataMCNP[k], enerBoundMCNP[k], sampling, relevantData));
-                            match=true;
-                            break;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                for(int k=0; k<fsSizeMCNP; k++)
-                {
-                    ExtractZA(isoNameListMCNP[k], zMCNP, aMCNP);
-                    if((zG4NDL==zMCNP)&&(aG4NDL==aMCNP))
-                    {
-                        sumErrorVecGbl[j]=(CalcDiff(outDir+isoNameListG4NDL[j]+".txt", isoFSDataG4NDL[j], enerBoundG4NDL[j], isoFSDataMCNP[k], enerBoundMCNP[k], sampling, relevantData));
-                        match=true;
-                        break;
-                    }
-                }
-            }
+            sumErrorVecGbl[j]=(CalcDiff(outDir+isoNameListG4NDL[j]+".txt", j, sampling, relevantData, binBounds));
+            match=true;
+            break;
             while(nBar<int(j*80/fsSizeG4NDL))
             {
                 nBar++;
@@ -965,75 +935,107 @@ double CompareData(string outDir, string *isoNameListG4NDL, VFDNeutronHPFinalSta
     return sumDiff;
 }
 
-#endif
-
-double CalcDiff(string outFileName, VFDNeutronHPFinalState *isoFSDataG4NDL, std::pair <double,double> enerBoundG4NDL, VFDNeutronHPFinalState *isoFSDataMCNP, std::pair <double,double> enerBoundMCNP, bool sampling, bool *relevantData)
+double CalcDiff(string outFileName, int isoIndex, bool sampling, bool *relevantData, double *binBounds)
 {
-    stringstream stream;
-    G4HadProjectile *projectile;
-    int points=1;
-    double totalDiff=0.;
-    FSSpectrumData fsDataG4NDL, fsDataMCNP;
-    G4HadFinalState *resultG4NDLVec, *resultMCNPVec;
+    char line[256];
+	double dummy;
+	double totalDiff=0.;
+    bool relevantDataMCNP[numDataTypes];
 
-    double emax, emin, enStep;
-    if(enerBoundG4NDL.first<enerBoundMCNP.first)
-    {
-        emin=enerBoundMCNP.first;
-    }
-    else
-    {
-        emin=enerBoundG4NDL.first;
-    }
 
-    if(enerBoundG4NDL.second>enerBoundMCNP.second)
+    string inMCNPFileName = inMCNPFSDirGbl+fsDirNameListGbl[fsIndexGbl]+isoNameListG4NDLGbl[isoIndex].substr(0,isoNameListG4NDLGbl[isoIndex].find_last_of('_'))+".txt";
+
+    stringstream inMCNP, stream;
+
+    GetDataStream(inMCNPFileName, inMCNP);
+
+    if(!inMCNP.good())
     {
-        emax=enerBoundMCNP.second;
-    }
-    else
-    {
-        emax=enerBoundG4NDL.second;
+        return -1;
     }
 
-    int numLoops=(std::ceil(std::log10(emax/emin)));
-    incEnerSize = numPointPerOrder*numLoops+1;
-    incEnerVec = new double[incEnerSize];
-    incEnerVec[0]=emin;
+    inMCNP.getline(line,256);
+    inMCNP >> numIncEner;
+    inMCNP.getline(line,256);
+    inMCNP.getline(line,256);
+    inMCNP.getline(line,256);
 
-    for(int i=0; i<numLoops; i++)
+    incEnerVec = new double [numIncEner];
+    double *** mcnpIsoData = new double **[numIncEner];
+    for(int i=0; i<numIncEner; i++)
     {
-        (incEnerVec[i*numPointPerOrder]*10<emax)? (enStep=9*incEnerVec[i*numPointPerOrder]/numPointPerOrder) : (enStep=(emax-incEnerVec[i*numPointPerOrder])/numPointPerOrder);
-        for(int step=0; step<numPointPerOrder; step++)
+        mcnpIsoData[i] = new double *[numDataTypes];
+        for(int j=0; j<numDataTypes; j++)
         {
-            incEnerVec[i*numPointPerOrder+step+1] = incEnerVec[i*numPointPerOrder+step] + enStep;
+            mcnpIsoData[i][j] = new double [numBins];
         }
     }
 
-    stream << "Comparison of G4NDL Data to the Converted MCNP data using\n" << incEnerSize << " incoming energy points\n" << numBins << " bins per histogram\n" << std::endl;
     for(int i=0; i<numDataTypes; i++)
     {
-        stream << relevantData[i] << '\t';
+        inMCNP >> relevantDataMCNP[i];
+    }
+
+
+	for (int i = 0; i<numIncEner; i++)
+	{
+		inMCNP >> dummy;
+		incEnerVec[i] = dummy;
+	}
+
+	for (int i = 0; i<numDataTypes; i++)
+	{
+		inMCNP.getline(line, 256);
+		inMCNP.getline(line, 256);
+		inMCNP.getline(line, 256);
+		for (int k = 0; k < numBins; k++)
+		{
+			inMCNP >> dummy;
+		}
+
+		if (relevantDataMCNP[i] == 1)
+		{
+			for (int j = 0; j < numIncEner; j++)
+			{
+				for (int k = 0; k < numBins; k++)
+				{
+					inMCNP >> dummy;
+					mcnpIsoData[j][i][k] = dummy;
+				}
+			}
+		}
+	}
+
+    G4HadProjectile *projectile;
+    int points=1;
+    FSSpectrumData *fsDataG4NDL = new FSSpectrumData [numIncEner];
+    G4HadFinalState *resultG4NDLVec;
+
+    stream.clear();
+    stream.str("");
+
+    stream << "Comparison of G4NDL Data to the Converted MCNP data using\n" << numIncEner << " incoming energy points\n" << numBins << " bins per histogram\n" << std::endl;
+    for(int i=0; i<numDataTypes; i++)
+    {
+        stream << relevantDataGbl[fsIndexGbl][i] << '\t';
     }
     stream << '\n' << endl;
 
-    for(int i=0; i<incEnerSize; i++)
+    stream << std::setprecision(6);
+    for(int i=0; i<numIncEner; i++)
     {
         stream << std::setw(14) << std::right << incEnerVec[i];
-        if(((i+1)%6==0)||(i==incEnerSize-1))
+        if(((i+1)%6==0)||(i==numIncEner-1))
             stream << '\n';
     }
-    stream << '\n' << endl;
 
     SetDataStream( outFileName, stream, true);
 
 
-    for(int i=0; i<incEnerSize; i++)
+    for(int i=0; i<numIncEner; i++)
     {
         nParticle->SetKineticEnergy(incEnerVec[i]);
         projectile = new G4HadProjectile(*nParticle);
-
-        fsDataG4NDL.Clear();
-        fsDataMCNP.Clear();
 
         if(sampling)
         {
@@ -1041,29 +1043,81 @@ double CalcDiff(string outFileName, VFDNeutronHPFinalState *isoFSDataG4NDL, std:
         }
         for(int l=0; l<points; l++)
         {
-            resultG4NDLVec = isoFSDataG4NDL->ApplyYourself(*projectile);
-            resultMCNPVec = isoFSDataMCNP->ApplyYourself(*projectile);
-            if((resultG4NDLVec==0)||(resultMCNPVec==0))
+            resultG4NDLVec = isoFSDataG4NDLGbl[isoIndex]->ApplyYourself(*projectile);
+            if(resultG4NDLVec==0)
             {
                 stream.clear();
                 stream.str("");
                 stream << "No final state data to compare!" << std::endl;
                 SetDataStream( outFileName, stream, false);
                 delete projectile;
-                delete [] incEnerVec;
-                return 0.;
+
+                return -1;
             }
 
-            fsDataG4NDL.AddData(resultG4NDLVec);
-            fsDataMCNP.AddData(resultMCNPVec);
+            fsDataG4NDL[i].AddData(resultG4NDLVec);
         }
-        totalDiff+=fsDataG4NDL.CompareFSData(outFileName, fsDataMCNP, relevantData);
-
         delete projectile;
     }
-    delete [] incEnerVec;
-    return totalDiff/points;
+    int boundType;
+    for(int h=0; h<numDataTypes; h++)
+    {
+        if((relevantDataGbl[fsIndexGbl][h])&&(relevantDataMCNP[h]))
+        {
+            stream.clear();
+            stream.str("");
+            stream << '\n' << dataTypeHeaders[h] << '\n' << std::endl;
+
+            boundType=floor(h/3);
+
+            for(int i=0; i<numBins; i++)
+            {
+                stream << std::setw(14) << std::right << binBounds[boundType][i];
+                if(((i+1)%6==0)||(i==numBins-1))
+                    stream << '\n';
+            }
+            SetDataStream( outFileName, stream, false);
+
+            for(int i=0; i<numIncEner; i++)
+            {
+                if(!fsDataG4NDL[i].HasData(h))
+                {
+                    continue;
+                }
+                totalDiff+=fsDataG4NDL[i].CompareFSData(outFileName, mcnpIsoData[i], h, binBounds[boundType], numBins);
+            }
+        }
+    }
+
+    delete isoFSDataG4NDLGbl[isoIndex];
+
+
+    if(incEnerVec)
+        delete [] incEnerVec;
+    if(FSSpectrumData)
+        delete [] FSSpectrumData;
+    if(isoFSDataG4NDLGbl[isoIndex])
+    {
+        delete isoFSDataG4NDLGbl[isoIndex];
+        isoFSDataG4NDLGbl[isoIndex]=NULL;
+    }
+    for(int i=0; i<numIncEner; i++)
+    {
+        for(int j=0; j<numDataTypes; j++)
+        {
+            if(mcnpIsoData[i][j])
+                delete [] mcnpIsoData[i][j];
+        }
+        if(mcnpIsoData[i])
+            delete [] mcnpIsoData[i];
+    }
+    if(mcnpIsoData)
+        delete [] mcnpIsoData;
+
+    return (totalDiff/numIncEner);
 }
+
+#endif
 
 
 
@@ -1215,6 +1269,11 @@ void GetDataStream( string filename, std::stringstream& ss)
   if ( thefData.good() )
   {
      int file_size = thefData.tellg();
+     if(file_size<=0)
+     {
+        ss.setstate( std::ios::badbit );
+        return;
+     }
      thefData.seekg( 0 , std::ios::beg );
      char* filedata = new char[ file_size ];
      while ( thefData )
@@ -1230,8 +1289,8 @@ void GetDataStream( string filename, std::stringstream& ss)
 // found no data file
 //                 set error bit to the stream
      ss.setstate( std::ios::badbit );
-     if(master)
-        cout << std::endl << "### failed to open ascii file " << filename << " ###" << std::endl;
+//     if(master)
+//        cout << std::endl << "### failed to open ascii file " << filename << " ###" << std::endl;
   }
 
    if (data != NULL)

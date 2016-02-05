@@ -281,6 +281,7 @@ void VFDNeutronHPPhotonDist::InitPartials(std::istream & aDataFile)
 G4ReactionProductVector * VFDNeutronHPPhotonDist::GetPhotons(G4double anEnergy)
 {
 
+    return NULL;
   //G4cout << "VFDNeutronHPPhotonDist::GetPhotons repFlag " << repFlag << G4endl;
   // the partial cross-section case is not in this yet. @@@@  << 070601 TK add partial
   G4int i, ii, iii;

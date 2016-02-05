@@ -38,6 +38,7 @@
 #include "G4NeutronHPAngular.hh"
 #include "G4Track.hh"
 #include "G4IonTable.hh"
+#include "VFDNeutronHPFSFissionFS.hh"
 
 class VFDNeutronHPFissionBaseFS : public VFDNeutronHPFinalState
 {
@@ -114,10 +115,12 @@ class VFDNeutronHPFissionBaseFS : public VFDNeutronHPFinalState
   G4NeutronHPVector * theXsection;
   VFDNeutronHPEnergyDistribution theEnergyDistribution;
   G4NeutronHPAngular theAngularDistribution;
+  VFDNeutronHPFSFissionFS theYieldData;
 
   G4ReactionProduct theNeutron;
   G4ReactionProduct theTarget;
   G4double targetMass;
+  G4int offset;
 
   private:
 

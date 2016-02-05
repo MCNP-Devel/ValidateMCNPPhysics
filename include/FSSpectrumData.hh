@@ -12,6 +12,7 @@
 #include <iomanip>
 
 #define numBins 100
+#define numDataTypes 9
 
 class FSSpectrumData
 {
@@ -19,12 +20,13 @@ class FSSpectrumData
         FSSpectrumData();
         virtual ~FSSpectrumData();
         void AddData(G4HadFinalState* result);
+        void AddSecondary(G4HadFinalState &nSec);
         void AddSecondary(G4DynamicParticle &nSec);
         void AddDelayed(G4DynamicParticle &nDel);
         void AddPhoton(G4DynamicParticle &pSec);
         void AddPrimary(G4HadFinalState &nPrim);
 
-        std::vector<double>& GetNSecMomAngle() {return nSecMomAnglei;}
+        std::vector<double>& GetNSecMomAngle() {return nSecMomAngle;}
         std::vector<double>& GetNDelMomAngle() {return nDelMomAngle;}
         std::vector<double>& GetPSecMomAngle() {return pSecMomAngle;}
         std::vector<double>& GetNSecKEn() {return nSecKEn;}
@@ -46,10 +48,10 @@ class FSSpectrumData
         {
             pSecYield.push_back(yield);
         }
-        double CompareFSData(std::string &outFileName, FSSpectrumData &mcnpData, bool *relevantData);
         double CompareFSData(std::string &outFileName, double **mcnpIsoData, int dataTypeIndex, double *binBounds, int binVecSize);
         double CompareHist(std::stringstream &stream, std::vector<double> &g4ndlData, double *mcnpIsoData, double *binLimits=NULL, int binVecSize=-1);
         void GetBinLimits(double &minVal, double &maxVal, int dataTypeIndex, bool &hasData);
+        bool HasData(int dataTypeIndex);
         double GetMin(std::vector<double> &valVec, bool &hasData);
         double GetMax(std::vector<double> &valVec);
         void SetDataStream( std::string filename , std::stringstream& ss, bool overWrite );
