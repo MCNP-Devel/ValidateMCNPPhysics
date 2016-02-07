@@ -95,6 +95,8 @@
 // we modified the methodology of G4NeutronHPLabAngularEnergyDist to give correct results
 // modified the neutron yield for the fission process so that it more closesly matched the mcnp yield, it only goes between two values and it is proportionately more probable for it to go to the closest value
 // modified the fission yield again so that it floors the yield when there is no delayed data to match mcnp
+// modified the yield in G4NeutronHPProducts.cc so that it floors the yield and makes sure it is at least one, to bring it in alignment with mcnp, the original geant4 code that was there seems incorrect
+   // probably should use the distribution that i put in comments or a poisson dist
 
 // 080808 Something unexpected is happen in G4NeutronHPLabAngularEnergy is caused by the energy regime of the angular-energy not extending down to the minimum energy supplied in the cross-section data, this is not our fault
 // this is the fault of the G4NDL data, and seems to mainly occur for the isotopes of berylium
@@ -788,7 +790,6 @@ double CompareData(string outDir, int fsSizeG4NDL, bool sampling)
         int nBar=0;
         for(int j=0; j<fsSizeG4NDL; j++)
         {
-//
 			if(taskIn)
 				delete taskIn;
 
